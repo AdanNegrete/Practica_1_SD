@@ -6,14 +6,13 @@ import json
 class Peer:
     def __init__(self, info_file):
         self.info = json.loads(open(info_file).read())
-        self.available_torrents = self.list_files(info_file)
+        self.available_torrents = self.list_files()
         self.peer_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.recv_data = []
 
-    def list_files(self, info_file):
-        folder=info_file.split('/')
+    def list_files(self):
         temp_list = []
-        for i in os.listdir(folder[0]):
+        for i in os.listdir(self.info['root_dir']):
             if(i.endswith('.torrent')):
                 temp_list.append(i)
         return temp_list
@@ -22,7 +21,7 @@ class Peer:
         msg = {'id': self.info['peer_id'], 'ip': self.info['ip'], 'port': self.info['port'], 'available_torrents': self.available_torrents ,'msg': 'ALIVE'}
         #192.168.0.26
         #localhost
-        self.peer_socket.connect(("192.168.0.30", int(self.info['tracker_port'])))
+        self.peer_socket.connect(("192.168.0.26", int(self.info['tracker_port'])))
         self.peer_socket.send(json.dumps(msg).encode('utf-8'))
         response = self.peer_socket.recv(1024).decode('utf-8')
     
@@ -40,10 +39,10 @@ class Peer:
         self.recv_data.pop(self.info['peer_id'])
         return True
 
-    def update_status(self, tracker_down,info_file):
+    def update_status(self, tracker_down):
         if tracker_down:
             return False
-        self.available_torrents = self.list_files(info_file)
+        self.available_torrents = self.list_files()
         msg = {'id': self.info['peer_id'], 'ip': self.info['ip'], 'port': self.info['port'], 'available_torrents': self.available_torrents ,'msg': 'UPDATE_STATUS'}
         self.peer_socket.send(json.dumps(msg).encode('utf-8'))
         temp = self.peer_socket.recv(1024).decode('utf-8')
@@ -93,17 +92,21 @@ class S_Peer:
             self.continue_running = False
     
     def send_file(self, request, file_name):
-        json_file = json.loads(open(self.info['root_dir'] + "/"+file_name, "r").read())
+        json_name = open(self.info['root_dir'] + "/"+file_name)
+        json_file = json.load(json_name)
         request.send(json.dumps(json_file).encode('utf-8'))
-        current_file = open(json_file['name'], "rb")
-        piece = current_file.read(self.PIECE_LENGTH)
-        while piece:
-            request.send(piece)
+        response = request.recv(1024).decode('utf-8')
+        response = json.loads(response)
+        if(response['msg'] == 'OK'):
+            current_file = open(json_file['name'], "rb")
             piece = current_file.read(self.PIECE_LENGTH)
-            if not piece:
-                break
-        request.close()
-        current_file.close()
+            while piece:
+                request.send(piece)
+                piece = current_file.read(self.PIECE_LENGTH)
+                if not piece:
+                    break
+            request.close()
+            current_file.close()
 
 def handle_connection(info_file):
     """
@@ -152,16 +155,18 @@ def handle_connection(info_file):
                     r_socket.connect((peer_obj.recv_data[peer_id]['ip'], int(peer_obj.recv_data[peer_id]['port'])))
                     r_socket.send(json.dumps(msg).encode('utf-8'))
                     response = r_socket.recv(1024).decode('utf-8')
-                    data = json.loads(response)
-                    new_file = open(data['name'], "wb")
-                    piece = r_socket.recv(10240)
-                    print("Downloading...")
-                    while piece:
-                        new_file.write(piece)
+                    if(response):
+                        r_socket.send(json.dumps({'id': peer_obj.info['peer_id'], 'msg': 'OK'}).encode('utf-8'))
+                        data = json.loads(response)
+                        new_file = open(data['name'], "wb")
                         piece = r_socket.recv(10240)
-                    new_file.close()
-                    r_socket.close()
-                    print("Download complete")
+                        print("Downloading...")
+                        while piece:
+                            new_file.write(piece)
+                            piece = r_socket.recv(10240)
+                        new_file.close()
+                        r_socket.close()
+                        print("Download complete")
                 except ConnectionRefusedError:
                     print("Peer is down")
                     print("Please, reload the list of peers")
@@ -170,7 +175,7 @@ def handle_connection(info_file):
                 print("No peers available")
         elif(choice == "3"):
             print("Updating status...")
-            if(peer_obj.update_status(tracker_down,info_file)):
+            if(peer_obj.update_status(tracker_down)):
                 print("Status updated")
             else:
                 print("Tracker is down")
