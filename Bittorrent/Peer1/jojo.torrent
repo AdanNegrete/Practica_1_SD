@@ -1,0 +1,11 @@
+{
+    "check_sum": [
+        "e39b752074e6a1ad8b13295dd778fe38"
+    ],
+    "id": "fc5c72872ba3c228a55fc130d2e59a06",
+    "last_piece_size": 56702,
+    "name": "Peer1/jojo.webp",
+    "pieces": 1,
+    "tracker_ip": "192.168.0.30",
+    "tracker_port": "5555"
+}
